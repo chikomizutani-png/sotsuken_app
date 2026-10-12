@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卒研用クイズアプリ（交互振り分け＆ミッション検証）</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #quiz-container { background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; text-align: center; max-height: 90vh; overflow-y: auto; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 10px 0; background-color: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background-color: #0056b3; }
+        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        .tab-container { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .tab-btn { background: none; border: none; font-size: 16px; font-weight: bold; color: #888; cursor: pointer; padding: 10px; }
+        .tab-btn.active { color: #007bff; border-bottom: 3px solid #007bff; }
+        .stamp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }
+        .stamp-slot { width: 60px; height: 60px; border: 2px dashed #ccc; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 28px; background-color: #fafafa; margin: 0 auto; }
+        .stamp-slot.stamped { border: 2px solid #ff4d4f; background-color: #fff0f6; }
+        .hidden { display: none; }
+        #user-info { margin-bottom: 10px; font-size: 14px; color: #555; }
+        .form-group { text-align: left; margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        .status-list { text-align: left; background: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 14px; line-height: 1.8; }
+        .mission-item { text-align: left; background: #fff; border: 1px solid #ddd; padding: 12px; margin: 8px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .mission-title { font-weight: bold; font-size: 14px; }
+        .mission-desc { font-size: 12px; color: #666; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .badge.yet { background-color: #ffe58f; color: #d46b08; }
+        .badge.done { background-color: #b7eb8f; color: #389e0d; }
+        
+        .genre-badge { display: inline-block; background-color: #673ab7; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; vertical-align: middle; margin-left: 8px; }
+        
+        .progress-container { background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 20px; margin-top: 5px; overflow: hidden; position: relative; }
+        .progress-bar { background-color: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease; }
+        .progress-text { position: absolute; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #333; top: 1px; left: 0; }
+    </style>
+</head>
+<body>
+
+<div id="quiz-container">
+    <!-- 1. ログイン画面 -->
+    <div id="login-section">
+        <h2>クイズアプリへようこそ</h2>
+        <p style="font-size: 14px; color:#666;">研究用データ収集にご協力をお願いします</p>
+        <button id="login-btn" class="btn">Googleアカウントでログイン</button>
+    </div>
+
+    <!-- 2. プロフィール入力画面 -->
+    <div id="profile-section" class="hidden">
+        <h2>プロフィール登録</h2>
+        <div class="form-group">
+            <label>学籍番号</label>
+            <input type="text" id="input-student-id" placeholder="例: 24X1234">
+        </div>
+        <div class="form-group">
+            <label>学年</label>
+            <select id="input-grade">
+                <option value="1年">1年</option>
+                <option value="2年">2年</option>
+                <option value="3年">3年</option>
+                <option value="4年">4年</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>性別</label>
+            <select id="input-gender">
+                <option value="回答しない">回答しない</option>
+                <option value="男性">男性</option>
+                <option value="女性">女性</option>
+                <option value="その他">その他</option>
+            </select>
+        </div>
+        <button id="save-profile-btn" class="btn">登録して開始</button>
+    </div>
+
+    <!-- 3. メイン画面 -->
+    <div id="main-section" class="hidden">
+        <div id="user-info"></div>
+        <div id="bonus-message" style="color: #ff4d4f; font-weight: bold; margin-bottom: 15px;"></div>
+        
+        <div class="tab-container">
+            <button id="tab-quiz" class="tab-btn active">クイズ</button>
+            <button id="tab-mission" class="tab-btn">ミッション</button>
+            <button id="tab-stamp" class="tab-btn">スタンプ</button>
+            <button id="tab-status" class="tab-btn">データ</button>
+        </div>
+
+        <!-- ① クイズページ -->
+        <div id="page-quiz">
+            <div style="margin-bottom: 10px;">
+                <span id="quiz-meta" style="font-size: 16px; font-weight: bold;">問題</span>
+                <span id="quiz-genre" class="genre-badge hidden">ジャンル</span>
+            </div>
+            <h2 id="question" style="margin-top: 5px;">読み込み中...</h2>
+            <div id="choices"></div>
+            <div id="result"></div>
+        </div>
+
+        <!-- ② デイリーミッションページ -->
+        <div id="page-mission" class="hidden">
+            <h3>今日のデイリーミッション</h3>
+            <p id="mission-group-notice" style="font-size: 12px; color: #888;"></p>
+            <div id="mission-list"></div>
+        </div>
+
+        <!-- ③ スタンプカードページ -->
+        <div id="page-stamp" class="hidden">
+            <h3>連続ログインスタンプカード</h3>
+            <div class="stamp-grid" id="stamp-grid"></div>
+            <p id="stamp-status-text"></p>
+        </div>
+
+        <!-- ④ 研究データ確認ページ -->
+        <div id="page-status" class="hidden">
+            <h3>研究収集データ（確認用）</h3>
+            <div class="status-list">
+                <strong>【属性】</strong><br>
+                ・グループ: <span id="status-group" style="color:red; font-weight:bold;">-</span><br>
+                ・学籍番号: <span id="status-student-id">-</span><br>
+                ・学年: <span id="status-grade">-</span><br>
+                ・性別: <span id="status-gender">-</span><br><br>
+                
+                <strong>【ミッション達成報酬（10日間検証）】</strong><br>
+                ・通算獲得ミッションポイント:
+                <div class="progress-container">
+                    <div id="status-points-bar" class="progress-bar"></div>
+                    <div id="status-points-text" class="progress-text">0 / 40 pt</div>
+                </div>
+                <span style="font-size: 11px; color:#666;">※1日最大4pt × 10日間 ＝ 最大40pt</span><br><br>
+
+                <strong>【ログ（継続率指標）】</strong><br>
+                ・ログイン日数（通算）: <span id="status-login-days">-</span> 日<br>
+                ・ログイン回数: <span id="status-login-count">-</span> 回<br>
+                ・クイズプレイ回数: <span id="status-play-count">-</span> 回<br>
+                ・現在の連続ログイン: <span id="status-stamp-count">-</span> 日目
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    
+    // 📁 クイズデータセットを外部JSから読み込み
+    import { allQuizData } from './quiz-data.js';
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAlX1NgXocC_brArEeGL2XbP8prAZqoMx4",
+        authDomain: "sotsuken-2826c.firebaseapp.com",
+        projectId: "sotsuken-2826c",
+        storageBucket: "sotsuken-2826c.firebasestorage.app",
+        messagingSenderId: "98653503495",
+        appId: "1:98653503495:web:4297e0cf40baa0dbc2eaa2",
+        measurementId: "G-H18YZ4SDVP"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    let currentPlayQuizData = [];
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let currentUserUid = null;
+    let userData = null;
+    
+    let roundTagsSeen = {}; 
+    let roundTagsCorrect = {};
+
+    const loginSection = document.getElementById('login-section');
+    const profileSection = document.getElementById('profile-section');
+    const mainSection = document.getElementById('main-section');
+    const loginBtn = document.getElementById('login-btn');
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    const userInfo = document.getElementById('user-info');
+    const bonusMessage = document.getElementById('bonus-message');
+    
+    const tabQuiz = document.getElementById('tab-quiz');
+    const tabMission = document.getElementById('tab-mission');
+    const tabStamp = document.getElementById('tab-stamp');
+    const tabStatus = document.getElementById('tab-status');
+    
+    const pageQuiz = document.getElementById('page-quiz');
+    const pageMission = document.getElementById('page-mission');
+    const pageStamp = document.getElementById('page-stamp');
+    const pageStatus = document.getElementById('page-status');
+
+    loginBtn.addEventListener('click', () => {
+        signInWithRedirect(auth, provider).catch((error) => {
+            console.error("Login Error: ", error);
+            alert("ログインに失敗しました: " + error.message);
+        });
+    });
+
+    getRedirectResult(auth).catch((error) => {
+        console.error("Redirect Result Error: ", error);
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            currentUserUid = user.uid;
+            userInfo.textContent = `ログイン中: ${user.displayName} さん`;
+            
+            const userDocRef = doc(db, "users", user.uid);
+            const userDocSnap = await getDoc(userDocRef);
+
+            if (userDocSnap.exists()) {
+                userData = userDocSnap.data();
+                await handleLoginCounters(user.uid, userData);
+                
+                loginSection.classList.add('hidden');
+                profileSection.classList.add('hidden');
+                mainSection.classList.remove('hidden');
+                
+                startNewGame();
+                updateStampCardView();
+                updateMissionView();
+                updateStatusDisplay();
+            } else {
+                loginSection.classList.add('hidden');
+                profileSection.classList.remove('hidden');
+            }
+        } else {
+            loginSection.classList.remove('hidden');
+            mainSection.classList.add('hidden');
+            profileSection.classList.add('hidden');
+        }
+    });
+
+    saveProfileBtn.addEventListener('click', async () => {
+        const studentId = document.getElementById('input-student-id').value.trim();
+        const grade = document.getElementById('input-grade').value;
+        const gender = document.getElementById('input-gender').value;
+
+        if (!studentId) { alert("学籍番号を入力してください。"); return; }
+        saveProfileBtn.disabled = true;
+
+        const todayFormatted = getFormattedDate(new Date());
+        const counterRef = doc(db, "system", "user_counter");
+
+        try {
+            let assignedGroup = "A";
+
+            await runTransaction(db, async (transaction) => {
+                const counterSnap = await transaction.get(counterRef);
+                let currentCount = 0;
+                if (counterSnap.exists()) {
+                    currentCount = counterSnap.data().count || 0;
+                }
+                const nextCount = currentCount + 1;
+                assignedGroup = (nextCount % 2 !== 0) ? "A" : "B";
+                transaction.set(counterRef, { count: nextCount }, { merge: true });
+            });
+
+            const initialData = {
+                studentId: studentId,
+                grade: grade,
+                gender: gender,
+                group: assignedGroup,
+                loginCount: 1,
+                loginDays: 1,
+                playCount: 0,
+                stampCount: 1,
+                missionPoints: 0, 
+                lastLoginDate: todayFormatted,
+                m1_done: false, m2_done: false, m3_done: false, m4_done: false,
+                lastMissionDate: todayFormatted
+            };
+
+            await setDoc(doc(db, "users", currentUserUid), initialData);
+            userData = initialData;
+
+            bonusMessage.textContent = `🎁 連続ログインスタート（1日目）！`;
+            
+            profileSection.classList.add('hidden');
+            mainSection.classList.remove('hidden');
+            
+            startNewGame();
+            updateStampCardView();
+            updateMissionView();
+            updateStatusDisplay();
+
+        } catch (e) {
+            console.error("Registration error: ", e);
+            alert("登録エラーが発生しました。");
+            saveProfileBtn.disabled = false;
+        }
+    });
+
+    function getFormattedDate(d) {
+        return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+    }
+
+    async function handleLoginCounters(uid, data) {
+        const now = new Date();
+        const todayStr = getFormattedDate(now);
+        const userDocRef = doc(db, "users", uid);
+
+        let updateData = { loginCount: increment(1) };
+
+        if (data.lastLoginDate !== todayStr) {
+            const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            
+            let isConsecutive = false;
+            if (data.lastLoginDate) {
+                const parts = data.lastLoginDate.split('/');
+                if (parts.length === 3) {
+                    const lastDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                    const diffTime = todayDate - lastDate;
+                    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays === 1) {
+                        isConsecutive = true;
+                    }
+                }
+            }
+
+            let newStampCount = 1;
+            if (isConsecutive) {
+                newStampCount = (data.stampCount || 0) + 1;
+                if (newStampCount > 7) newStampCount = 1;
+                bonusMessage.textContent = `🔥 連続ログイン ${newStampCount} 日目達成！`;
+            } else {
+                newStampCount = 1;
+                bonusMessage.textContent = `⚠️ ログインが途切れたため、1日目にリセットされました！`;
+            }
+
+            updateData.loginDays = increment(1);
+            updateData.stampCount = newStampCount;
+            updateData.lastLoginDate = todayStr;
+            updateData.m1_done = false;
+            updateData.m2_done = false;
+            updateData.m3_done = false;
+            updateData.m4_done = false;
+            updateData.lastMissionDate = todayStr;
+        }
+        
+        if (data.lastMissionDate === todayStr && !data.m4_done) {
+            updateData.m4_done = true;
+            updateData.missionPoints = increment(1); 
+        }
+
+        await updateDoc(userDocRef, updateData);
+        const freshSnap = await getDoc(userDocRef);
+        userData = freshSnap.data();
+    }
+
+    function updateMissionView() {
+        const listContainer = document.getElementById('mission-list');
+        const notice = document.getElementById('mission-group-notice');
+        if (!listContainer || !userData) return;
+        
+        listContainer.innerHTML = '';
+        notice.textContent = `あなたは検証グループ [ ${userData.group} ] です`;
+
+        let missions = [];
+        if (userData.group === "A") {
+            missions = [
+                { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', done: userData.m1_done },
+                { id: 'm2', title: 'クイズで満点を取る', desc: '全問正解を1回達成しよう', done: userData.m2_done },
+                { id: 'm3', title: 'クイズに2回挑戦する', desc: 'プレイ回数を増やそう', done: userData.m3_done },
+                { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', done: userData.m4_done }
+            ];
+        } else {
+            missions = [
+                { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', done: userData.m1_done },
+                { id: 'm2', title: '「野球部」に関する問題を1問引き当てて正解する', desc: '運よく野球部の問題が出題され、正解すると達成！', done: userData.m2_done },
+                { id: 'm3', title: '「歴史」に関する問題が出題される', desc: 'クイズ中に「歴史（興亜専門学校など）」の問題が1問でも出れば達成！', done: userData.m3_done },
+                { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', done: userData.m4_done }
+            ];
+        }
+
+        missions.forEach(m => {
+            const item = document.createElement('div');
+            item.classList.add('mission-item');
+            item.innerHTML = `
+                <div>
+                    <div class="mission-title">${m.title}</div>
+                    <div class="mission-desc">${m.desc}</div>
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <span class="badge ${m.done ? 'done' : 'yet'}">${m.done ? '達成済' : '未達成'}</span>
+                </div>
+            `;
+            listContainer.appendChild(item);
+        });
+    }
+
+    async function handleQuizEndMissions(playScore) {
+        const userDocRef = doc(db, "users", currentUserUid);
+        let updateData = { playCount: increment(1) };
+        let pointIncrement = 0;
+
+        if (!userData.m1_done) { updateData.m1_done = true; userData.m1_done = true; pointIncrement++; }
+
+        if (userData.group === "A") {
+            if (playScore === 7 && !userData.m2_done) {
+                updateData.m2_done = true;
+                userData.m2_done = true;
+                pointIncrement++;
+            }
+            if ((userData.playCount + 1) >= 2 && !userData.m3_done) {
+                updateData.m3_done = true;
+                userData.m3_done = true;
+                pointIncrement++;
+            }
+        } else {
+            if (roundTagsCorrect["野球部"] && roundTagsCorrect["野球部"] >= 1 && !userData.m2_done) {
+                updateData.m2_done = true;
+                userData.m2_done = true;
+                pointIncrement++;
+            }
+            if (roundTagsSeen["歴史"] && roundTagsSeen["歴史"] >= 1 && !userData.m3_done) {
+                updateData.m3_done = true;
+                userData.m3_done = true;
+                pointIncrement++;
+            }
+        }
+
+        if (pointIncrement > 0) {
+            updateData.missionPoints = increment(pointIncrement);
+        }
+
+        await updateDoc(userDocRef, updateData);
+        
+        const freshSnap = await getDoc(userDocRef);
+        userData = freshSnap.data();
+        
+        updateStatusDisplay();
+    }
+
+    function updateStampCardView() {
+        const stampGrid = document.getElementById('stamp-grid');
+        const stampStatusText = document.getElementById('stamp-status-text');
+        if (!stampGrid) return;
+        stampGrid.innerHTML = '';
+        const currentStamps = userData ? userData.stampCount : 0;
+        for (let i = 1; i <= 7; i++) {
+            const slot = document.createElement('div');
+            slot.classList.add('stamp-slot');
+            if (i <= currentStamps) { slot.classList.add('stamped'); slot.textContent = '💮'; } 
+            else { slot.textContent = i; }
+            stampGrid.appendChild(slot);
+        }
+        if (stampStatusText) stampStatusText.textContent = `現在 ${currentStamps} 日連続ログイン中！`;
+    }
+
+    function updateStatusDisplay() {
+        if (!userData) return;
+        document.getElementById('status-group').textContent = `ゲーム ${userData.group}`;
+        document.getElementById('status-student-id').textContent = userData.studentId;
+        document.getElementById('status-grade').textContent = userData.grade;
+        document.getElementById('status-gender').textContent = userData.gender;
+        document.getElementById('status-login-days').textContent = userData.loginDays;
+        document.getElementById('status-login-count').textContent = userData.loginCount;
+        document.getElementById('status-play-count').textContent = userData.playCount;
+        document.getElementById('status-stamp-count').textContent = `${userData.stampCount} 日目`;
+        
+        const currentPoints = userData.missionPoints || 0;
+        const maxPoints = 40; 
+        const percentage = Math.min((currentPoints / maxPoints) * 100, 100);
+        
+        document.getElementById('status-points-bar').style.width = `${percentage}%`;
+        document.getElementById('status-points-text').textContent = `${currentPoints} / ${maxPoints} pt`;
+    }
+
+    tabQuiz.addEventListener('click', () => { switchTab(tabQuiz, pageQuiz); });
+    
+    tabMission.addEventListener('click', async () => { 
+        switchTab(tabMission, pageMission); 
+        if (currentUserUid && userData) { 
+            await handleLoginCounters(currentUserUid, userData); 
+        }
+        updateMissionView(); 
+    });
+    
+    tabStamp.addEventListener('click', () => { switchTab(tabStamp, pageStamp); updateStampCardView(); });
+    tabStatus.addEventListener('click', () => { switchTab(tabStatus, pageStatus); updateStatusDisplay(); });
+
+    function switchTab(activeTab, activePage) {
+        [tabQuiz, tabMission, tabStamp, tabStatus].forEach(t => t.classList.remove('active'));
+        [pageQuiz, pageMission, pageStamp, pageStatus].forEach(p => p.classList.add('hidden'));
+        activeTab.classList.add('active');
+        activePage.classList.remove('hidden');
+    }
+
+    function startNewGame() {
+        currentPlayQuizData = [...allQuizData].sort(() => 0.5 - Math.random()).slice(0, 7);
+        currentQuestionIndex = 0;
+        score = 0;
+        roundTagsSeen = {};
+        roundTagsCorrect = {};
+        loadQuiz();
+    }
+    function loadQuiz() {
+        const choicesContainer = document.getElementById('choices');
+        const genreBadge = document.getElementById('quiz-genre');
+        const quizMeta = document.getElementById('quiz-meta');
+        if (!choicesContainer) return;
+        choicesContainer.innerHTML = '';
+        document.getElementById('result').textContent = '';
+        
+        const currentQuiz = currentPlayQuizData[currentQuestionIndex];
+        
+        quizMeta.textContent = `Q${currentQuestionIndex + 1}/7`;
+        genreBadge.textContent = currentQuiz.tag;
+        genreBadge.classList.remove('hidden');
+        
+        document.getElementById('question').textContent = currentQuiz.question;
+
+        const tag = currentQuiz.tag;
+        roundTagsSeen[tag] = (roundTagsSeen[tag] || 0) + 1;
+
+        currentQuiz.choices.forEach((choice, index) => {
+            const button = document.createElement('button');
+            button.innerText = choice;
+            button.classList.add('btn');
+            button.addEventListener('click', () => checkAnswer(index));
+            choicesContainer.appendChild(button);
+        });
+    }
+    function checkAnswer(selectedIndex) {
+        const currentQuiz = currentPlayQuizData[currentQuestionIndex];
+        const tag = currentQuiz.tag;
+        if (selectedIndex === currentQuiz.correct) { 
+            score++; 
+            roundTagsCorrect[tag] = (roundTagsCorrect[tag] || 0) + 1;
+            alert("正解！🎉"); 
+        } else { 
+            alert(`残念！正解は「${currentQuiz.choices[currentQuiz.correct]}」でした。`); 
+        }
+        currentQuestionIndex++;
+        if (currentQuestionIndex < currentPlayQuizData.length) { loadQuiz(); } 
+        else { showScore(); }
+    }
+    function showScore() {
+        document.getElementById('quiz-meta').textContent = "ゲーム終了！";
+        document.getElementById('quiz-genre').classList.add('hidden');
+        document.getElementById('question').textContent = "お疲れ様でした！";
+        document.getElementById('choices').innerHTML = '';
+        document.getElementById('result').innerHTML = `
+            <p>結果: 7問中 ${score} 問正解！</p>
+            <button id="retry-btn" class="btn">もう一度遊ぶ</button>
+        `;
+        document.getElementById('retry-btn').addEventListener('click', startNewGame);
+        handleQuizEndMissions(score);
+    }
+</script>
+
+</body>
+</html>
