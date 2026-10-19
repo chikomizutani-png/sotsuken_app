@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <title>卒研用クイズアプリ（交互振り分け＆ミッション検証）</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
@@ -141,7 +142,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     
     // 📁 クイズデータセットを外部JSから読み込み
@@ -190,14 +191,10 @@
     const pageStatus = document.getElementById('page-status');
 
     loginBtn.addEventListener('click', () => {
-        signInWithRedirect(auth, provider).catch((error) => {
+        signInWithPopup(auth, provider).catch((error) => {
             console.error("Login Error: ", error);
             alert("ログインに失敗しました: " + error.message);
         });
-    });
-
-    getRedirectResult(auth).catch((error) => {
-        console.error("Redirect Result Error: ", error);
     });
 
     onAuthStateChanged(auth, async (user) => {
