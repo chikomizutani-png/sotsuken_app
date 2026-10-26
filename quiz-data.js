@@ -1,4 +1,4 @@
-// 4つのJSONファイルをインポート (assert から with に変更)
+// 4つのJSONファイルをインポート (assert を with に変更)
 import asiaU1 from './asia-u_questions.json' with { type: 'json' };
 import asiaU2 from './asia-u-2_questions.json' with { type: 'json' };
 import general from './general_question.json' with { type: 'json' };
