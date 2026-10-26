@@ -1,4 +1,3 @@
-// このファイルは武蔵野市関連の問題リスト
 {"qid": "MSC-1-0001", "question": "武蔵野市にある有名な公園はどれ？", "answer_entity": "井の頭恩賜公園", "answer_candidates": ["井の頭恩賜公園", "代々木公園", "上野恩賜公園", "葛西臨海公園"]}
 {"qid": "MSC-1-0002", "question": "武蔵野市にある吉祥寺駅を通っていない路線はどれ？", "answer_entity": "西武新宿線", "answer_candidates": ["JR中央線快速", "JR中央線各駅停車", "京王井の頭線", "西武新宿線"]}
 {"qid": "MSC-1-0003", "question": "武蔵野市の市の木はどれ？", "answer_entity": "コブシ", "answer_candidates": ["ケヤキ", "ハナミズキ", "コブシ", "イチョウ"]}
