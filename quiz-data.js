@@ -1,8 +1,8 @@
-// 4つのJSONファイルをインポート
-import asiaU1 from './asia-u_questions.json' assert { type: 'json' };
-import asiaU2 from './asia-u-2_questions.json' assert { type: 'json' };
-import general from './general_question.json' assert { type: 'json' };
-import musashino from './musashino-city_questions.json' assert { type: 'json' };
+// 4つのJSONファイルをインポート (assert から with に変更)
+import asiaU1 from './asia-u_questions.json' with { type: 'json' };
+import asiaU2 from './asia-u-2_questions.json' with { type: 'json' };
+import general from './general_question.json' with { type: 'json' };
+import musashino from './musashino-city_questions.json' with { type: 'json' };
 
 // データ変換ヘルパー
 function processQuizList(list, tagLabel) {
