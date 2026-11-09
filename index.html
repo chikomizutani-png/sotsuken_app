@@ -150,7 +150,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     
     // 📁 クイズデータセットを外部JSから読み込み
@@ -198,11 +198,17 @@
     const pageStamp = document.getElementById('page-stamp');
     const pageStatus = document.getElementById('page-status');
 
+    // リダイレクト方式のログイン実行（ポップアップブロック回避）
     loginBtn.addEventListener('click', () => {
-        signInWithPopup(auth, provider).catch((error) => {
-            console.error("Login Error: ", error);
-            alert("ログインに失敗しました: " + error.message);
-        });
+        signInWithRedirect(auth, provider);
+    });
+
+    // リダイレクト結果の確認
+    getRedirectResult(auth).catch((error) => {
+        if (error) {
+            console.error("Login Redirect Error: ", error);
+            alert("ログイン処理中にエラーが発生しました: " + error.message);
+        }
     });
 
     onAuthStateChanged(auth, async (user) => {
@@ -379,7 +385,7 @@
             missions = [
                 { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', ready: userData.m1_ready, claimed: userData.m1_claimed },
                 { id: 'm2', title: '「野球部」に関する問題を1問引き当てて正解する', desc: '運よく野球部の問題が出題され、正解すると達成！', ready: userData.m2_ready, claimed: userData.m2_claimed },
-                { id: 'm3', title: '「歴史」に関する問題が出題される', desc: 'クイズ中に「歴史（興亜専門学校など）」の問題が1問でも出れば達成！', ready: userData.m3_ready, claimed: userData.m3_claimed },
+                { id: 'm3', title: '「歴史」に関する問題が出題される', desc: 'クイズ中に「歴史（興興専門学校など）」の問題が1問でも出れば達成！', ready: userData.m3_ready, claimed: userData.m3_claimed },
                 { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', ready: userData.m4_ready, claimed: userData.m4_claimed }
             ];
         }
