@@ -34,7 +34,7 @@
         .progress-container { background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 20px; margin-top: 5px; overflow: hidden; position: relative; }
         .progress-bar { background-color: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease; }
         .progress-text { position: absolute; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #333; top: 1px; left: 0; }
-        .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; background: #fff1f0; padding: 8px; border-radius: 4px; border: 1px solid #ffa39e; }
+        .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; background: #fff1f0; padding: 8px; border-radius: 4px; border: 1px solid #ffa39e; text-align: left; }
     </style>
 </head>
 <body>
@@ -162,13 +162,16 @@
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     
-    let allQuizData = [];
-    try {
-        const quizModule = await import('./quiz-data.js');
-        allQuizData = quizModule.allQuizData;
-    } catch(err) {
-        showError("quiz-data.js 読み込み失敗: " + err.message);
-    }
+    // 外部ファイル読み込みエラーを防ぐためクイズデータを直書き
+    const allQuizData = [
+        { question: "亜細亜大学の創立年はいつ？", choices: ["1941年", "1950年", "1960年", "1975年"], correct: 0, tag: "歴史" },
+        { question: "亜細亜大学の建学の精神は？", choices: ["自由と進歩", "自律利他", "三方一両損", "質実剛健"], correct: 1, tag: "理念" },
+        { question: "硬式野球部が全日本大学野球選手権で優勝した回数は？", choices: ["1回", "2回", "4回", "6回"], correct: 2, tag: "野球部" },
+        { question: "キャンパスがある「武蔵野市」のシンボルツリーは？", choices: ["イチョウ", "ケヤキ", "サクラ", "ハナミズキ"], correct: 1, tag: "地域" },
+        { question: "亜細亜大学のアジア留学プログラム（AUAP）の主な派遣国は？", choices: ["アメリカ", "中国", "オーストラリア", "イギリス"], correct: 0, tag: "国際" },
+        { question: "亜細亜大学の前身となった学校の名前は？", choices: ["東洋専門学校", "興亜専門学校", "武蔵野高等学院", "日本アジア学院"], correct: 1, tag: "歴史" },
+        { question: "大学のキャンパス最寄り駅である「武蔵境駅」を通るJRの路線は？", choices: ["中央線", "山手線", "埼京線", "総武線（各駅停車）"], correct: 0, tag: "地域" }
+    ];
 
     const firebaseConfig = {
         apiKey: "AIzaSyAlX1NgXocC_brArEeGL2XbP8prAZqoMx4",
@@ -208,7 +211,6 @@
     function showError(msg) {
         loginError.classList.remove('hidden');
         loginError.innerHTML = "⚠️ " + msg;
-        console.error(msg);
     }
 
     function clearError() {
@@ -216,8 +218,8 @@
         loginError.innerHTML = "";
     }
 
-    // ログイン処理（画面直出しデバッグ版）
-    loginBtn.onclick = async function() {
+    // ログイン処理
+    loginBtn.addEventListener('click', async () => {
         clearError();
         const rawStudentId = document.getElementById('login-student-id').value.trim();
         const password = document.getElementById('login-password').value.trim();
@@ -255,13 +257,13 @@
                 loginBtn.textContent = "ログイン / アカウント作成";
             }
         }
-    };
+    });
 
-    logoutBtn.onclick = function() {
+    logoutBtn.addEventListener('click', () => {
         if (confirm("ログアウトしますか？")) {
             signOut(auth);
         }
-    };
+    });
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
@@ -297,7 +299,7 @@
         }
     });
 
-    saveProfileBtn.onclick = async function() {
+    saveProfileBtn.addEventListener('click', async () => {
         const grade = document.getElementById('input-grade').value;
         const gender = document.getElementById('input-gender').value;
 
@@ -356,7 +358,7 @@
             showError("プロフィール保存エラー: " + e.message);
             saveProfileBtn.disabled = false;
         }
-    };
+    });
 
     function getFormattedDate(d) {
         return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
@@ -464,7 +466,7 @@
             listContainer.appendChild(item);
 
             if (m.ready && !m.claimed) {
-                item.querySelector(`#btn-${m.id}`).onclick = () => claimMission(m.id);
+                item.querySelector(`#btn-${m.id}`).addEventListener('click', () => claimMission(m.id));
             }
         });
     }
@@ -538,14 +540,14 @@
         document.getElementById('status-points-text').textContent = `${currentPoints} / ${maxPoints} pt`;
     }
 
-    document.getElementById('tab-quiz').onclick = () => switchTab(document.getElementById('tab-quiz'), document.getElementById('page-quiz'));
-    document.getElementById('tab-mission').onclick = async () => { 
+    document.getElementById('tab-quiz').addEventListener('click', () => switchTab(document.getElementById('tab-quiz'), document.getElementById('page-quiz')));
+    document.getElementById('tab-mission').addEventListener('click', async () => { 
         switchTab(document.getElementById('tab-mission'), document.getElementById('page-mission')); 
         if (currentUserUid && userData) await handleLoginCounters(currentUserUid, userData); 
         updateMissionView(); 
-    };
-    document.getElementById('tab-stamp').onclick = () => { switchTab(document.getElementById('tab-stamp'), document.getElementById('page-stamp')); updateStampCardView(); };
-    document.getElementById('tab-status').onclick = () => { switchTab(document.getElementById('tab-status'), document.getElementById('page-status')); updateStatusDisplay(); };
+    });
+    document.getElementById('tab-stamp').addEventListener('click', () => { switchTab(document.getElementById('tab-stamp'), document.getElementById('page-stamp')); updateStampCardView(); });
+    document.getElementById('tab-status').addEventListener('click', () => { switchTab(document.getElementById('tab-status'), document.getElementById('page-status')); updateStatusDisplay(); });
 
     function switchTab(activeTab, activePage) {
         const tabs = [document.getElementById('tab-quiz'), document.getElementById('tab-mission'), document.getElementById('tab-stamp'), document.getElementById('tab-status')];
@@ -557,10 +559,6 @@
     }
 
     function startNewGame() {
-        if (!allQuizData || allQuizData.length === 0) {
-            document.getElementById('question').textContent = "クイズデータの読み込みに失敗しています。";
-            return;
-        }
         currentPlayQuizData = [...allQuizData].sort(() => 0.5 - Math.random()).slice(0, 7);
         currentQuestionIndex = 0;
         score = 0;
@@ -590,7 +588,7 @@
             const button = document.createElement('button');
             button.innerText = choice;
             button.classList.add('btn');
-            button.onclick = () => checkAnswer(index);
+            button.addEventListener('click', () => checkAnswer(index));
             choicesContainer.appendChild(button);
         });
     }
@@ -619,7 +617,7 @@
             <p>結果: 7問中 ${score} 問正解！</p>
             <button id="retry-btn" class="btn">もう一度遊ぶ</button>
         `;
-        document.getElementById('retry-btn').onclick = startNewGame;
+        document.getElementById('retry-btn').addEventListener('click', startNewGame);
         handleQuizEndMissions(score);
     }
 </script>
