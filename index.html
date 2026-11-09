@@ -273,7 +273,6 @@
                 missionPoints: 0, 
                 lastLoginDate: todayFormatted,
 
-                // 各ミッションの「条件達成フラグ(ready)」と「報酬受け取り完了フラグ(claimed)」
                 m1_ready: false, m1_claimed: false,
                 m2_ready: false, m2_claimed: false,
                 m3_ready: false, m3_claimed: false,
@@ -344,7 +343,6 @@
             updateData.stampCount = newStampCount;
             updateData.lastLoginDate = todayStr;
             
-            // 日付が変わったらミッション状態をリセット
             updateData.m1_ready = false; updateData.m1_claimed = false;
             updateData.m2_ready = false; updateData.m2_claimed = false;
             updateData.m3_ready = false; updateData.m3_claimed = false;
@@ -352,7 +350,6 @@
             updateData.lastMissionDate = todayStr;
         }
         
-        // ミッション4: ページ確認で「条件達成 (ready)」をセット
         if (data.lastMissionDate === todayStr && !data.m4_ready && !data.m4_claimed) {
             updateData.m4_ready = true;
         }
@@ -402,7 +399,7 @@
             } else if (m.ready) {
                 btnClass = 'ready';
                 btnText = 'クリア！受け取る';
-                isDisabled = false; // 手動タップ可能！
+                isDisabled = false;
             }
 
             item.innerHTML = `
@@ -416,21 +413,19 @@
             `;
             listContainer.appendChild(item);
 
-            // 「クリア！受け取る」ボタンを押したときの処理を紐付け
             if (m.ready && !m.claimed) {
                 item.querySelector(`#btn-${m.id}`).addEventListener('click', () => claimMission(m.id));
             }
         });
     }
 
-    // ミッション報酬の手動受け取り処理
     async function claimMission(missionId) {
         if (!currentUserUid || !userData) return;
         const userDocRef = doc(db, "users", currentUserUid);
         
         let updateData = {};
         updateData[`${missionId}_claimed`] = true;
-        updateData.missionPoints = increment(1); // 手動受け取りで初めてポイント追加！
+        updateData.missionPoints = increment(1);
 
         await updateDoc(userDocRef, updateData);
         alert(`🎉 ミッション達成報酬を獲得しました！ (+1pt)`);
