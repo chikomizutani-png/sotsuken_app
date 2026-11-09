@@ -218,49 +218,49 @@
     const pageStamp = document.getElementById('page-stamp');
     const pageStatus = document.getElementById('page-status');
 
-    // ログイン / 新規登録 処理
+    // ログイン / 新規登録 処理（デバッグ強化版）
     loginBtn.addEventListener('click', async () => {
         loginError.textContent = "";
         const rawStudentId = document.getElementById('login-student-id').value.trim();
         const password = document.getElementById('login-password').value.trim();
 
         if (!rawStudentId || !password) {
+            alert("学籍番号とパスワードの両方を入力してください。");
             loginError.textContent = "学籍番号とパスワードを入力してください。";
             return;
         }
         if (password.length < 6) {
+            alert("パスワードは6文字以上で入力してください。");
             loginError.textContent = "パスワードは6文字以上で入力してください。";
             return;
         }
 
         loginBtn.disabled = true;
-        loginBtn.textContent = "処理中...";
+        loginBtn.textContent = "通信中...";
 
-        // 学籍番号のアルファベットを小文字に統一
         const studentId = rawStudentId.toLowerCase();
         const email = `${studentId}@quiz-app.local`;
         currentStudentId = rawStudentId.toUpperCase();
 
         try {
-            // まずログインを試す
+            // ① ログインを試行
             await signInWithEmailAndPassword(auth, email, password);
+            alert("ログインに成功しました！");
         } catch (error) {
-            // ログイン失敗時は新規作成を試す
+            // ② 既存ユーザーでない、または資格情報エラーの場合は新規登録を試す
             if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
                 try {
+                    alert("新規アカウントとして登録を開始します...");
                     await createUserWithEmailAndPassword(auth, email, password);
+                    alert("新規登録が完了しました！");
                 } catch (createError) {
-                    if (createError.code === 'auth/wrong-password' || createError.code === 'auth/invalid-credential') {
-                        loginError.textContent = "パスワードが正しくありません。";
-                    } else if (createError.code === 'auth/email-already-in-use') {
-                        loginError.textContent = "この学籍番号はすでに登録されています。正しいパスワードを入力してください。";
-                    } else {
-                        loginError.textContent = "登録エラー: " + createError.message;
-                    }
+                    alert("登録中にエラーが発生しました:\nコード: " + createError.code + "\n詳細: " + createError.message);
+                    loginError.textContent = "登録エラー: " + createError.message;
                     loginBtn.disabled = false;
                     loginBtn.textContent = "ログイン / アカウント作成";
                 }
             } else {
+                alert("ログイン中にエラーが発生しました:\nコード: " + error.code + "\n詳細: " + error.message);
                 loginError.textContent = "ログインエラー: " + error.message;
                 loginBtn.disabled = false;
                 loginBtn.textContent = "ログイン / アカウント作成";
@@ -278,26 +278,30 @@
         if (user) {
             currentUserUid = user.uid;
             
-            const userDocRef = doc(db, "users", user.uid);
-            const userDocSnap = await getDoc(userDocRef);
+            try {
+                const userDocRef = doc(db, "users", user.uid);
+                const userDocSnap = await getDoc(userDocRef);
 
-            if (userDocSnap.exists()) {
-                userData = userDocSnap.data();
-                userInfo.textContent = `学籍番号: ${userData.studentId}`;
-                
-                await handleLoginCounters(user.uid, userData);
-                
-                loginSection.classList.add('hidden');
-                profileSection.classList.add('hidden');
-                mainSection.classList.remove('hidden');
-                
-                startNewGame();
-                updateStampCardView();
-                updateMissionView();
-                updateStatusDisplay();
-            } else {
-                loginSection.classList.add('hidden');
-                profileSection.classList.remove('hidden');
+                if (userDocSnap.exists()) {
+                    userData = userDocSnap.data();
+                    userInfo.textContent = `学籍番号: ${userData.studentId}`;
+                    
+                    await handleLoginCounters(user.uid, userData);
+                    
+                    loginSection.classList.add('hidden');
+                    profileSection.classList.add('hidden');
+                    mainSection.classList.remove('hidden');
+                    
+                    startNewGame();
+                    updateStampCardView();
+                    updateMissionView();
+                    updateStatusDisplay();
+                } else {
+                    loginSection.classList.add('hidden');
+                    profileSection.classList.remove('hidden');
+                }
+            } catch (firestoreErr) {
+                alert("データベース読込エラー: " + firestoreErr.message);
             }
         } else {
             loginSection.classList.remove('hidden');
@@ -330,7 +334,6 @@
                 transaction.set(counterRef, { count: nextCount }, { merge: true });
             });
 
-            // メールアドレスから学籍番号を抽出（自動ログイン時対策）
             let displayStudentId = currentStudentId;
             if (!displayStudentId && auth.currentUser && auth.currentUser.email) {
                 displayStudentId = auth.currentUser.email.split('@')[0].toUpperCase();
@@ -372,7 +375,7 @@
 
         } catch (e) {
             console.error("Registration error: ", e);
-            alert("登録エラーが発生しました: " + e.message);
+            alert("プロフィール保存エラー: " + e.message);
             saveProfileBtn.disabled = false;
         }
     });
