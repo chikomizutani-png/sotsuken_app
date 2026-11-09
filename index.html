@@ -42,6 +42,7 @@
         .progress-container { background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 20px; margin-top: 5px; overflow: hidden; position: relative; }
         .progress-bar { background-color: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease; }
         .progress-text { position: absolute; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #333; top: 1px; left: 0; }
+        .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -60,6 +61,7 @@
             <input type="password" id="login-password" placeholder="任意のパスワード">
         </div>
         <button id="login-btn" class="btn">ログイン / アカウント作成</button>
+        <div id="login-error" class="error-msg"></div>
         <p style="font-size: 11px; color:#888; margin-top: 10px;">※初めて入力した学籍番号の場合、自動的に新規登録されます。</p>
     </div>
 
@@ -184,7 +186,6 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // ログイン状態をブラウザに永続保存（アプリを開いたときの自動ログイン用）
     setPersistence(auth, browserLocalPersistence);
 
     let currentPlayQuizData = [];
@@ -205,6 +206,7 @@
     const saveProfileBtn = document.getElementById('save-profile-btn');
     const userInfo = document.getElementById('user-info');
     const bonusMessage = document.getElementById('bonus-message');
+    const loginError = document.getElementById('login-error');
     
     const tabQuiz = document.getElementById('tab-quiz');
     const tabMission = document.getElementById('tab-mission');
@@ -218,47 +220,60 @@
 
     // ログイン / 新規登録 処理
     loginBtn.addEventListener('click', async () => {
-        const studentId = document.getElementById('login-student-id').value.trim().toLowerCase();
+        loginError.textContent = "";
+        const rawStudentId = document.getElementById('login-student-id').value.trim();
         const password = document.getElementById('login-password').value.trim();
 
-        if (!studentId || !password) {
-            alert("学籍番号とパスワードを入力してください。");
+        if (!rawStudentId || !password) {
+            loginError.textContent = "学籍番号とパスワードを入力してください。";
             return;
         }
         if (password.length < 6) {
-            alert("パスワードは6文字以上で入力してください。");
+            loginError.textContent = "パスワードは6文字以上で入力してください。";
             return;
         }
 
-        // Firebase Authで扱えるダミーのメール形式に変換
+        loginBtn.disabled = true;
+        loginBtn.textContent = "処理中...";
+
+        // 学籍番号のアルファベットを小文字に統一
+        const studentId = rawStudentId.toLowerCase();
         const email = `${studentId}@quiz-app.local`;
-        currentStudentId = studentId.toUpperCase();
+        currentStudentId = rawStudentId.toUpperCase();
 
         try {
-            // まず既存アカウントとしてログインを試行
+            // まずログインを試す
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
-            // アカウントが存在しない場合は新規作成
+            // ログイン失敗時は新規作成を試す
             if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
                 try {
                     await createUserWithEmailAndPassword(auth, email, password);
                 } catch (createError) {
-                    alert("ログイン/登録に失敗しました: " + createError.message);
+                    if (createError.code === 'auth/wrong-password' || createError.code === 'auth/invalid-credential') {
+                        loginError.textContent = "パスワードが正しくありません。";
+                    } else if (createError.code === 'auth/email-already-in-use') {
+                        loginError.textContent = "この学籍番号はすでに登録されています。正しいパスワードを入力してください。";
+                    } else {
+                        loginError.textContent = "登録エラー: " + createError.message;
+                    }
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = "ログイン / アカウント作成";
                 }
             } else {
-                alert("ログインエラー: " + error.message);
+                loginError.textContent = "ログインエラー: " + error.message;
+                loginBtn.disabled = false;
+                loginBtn.textContent = "ログイン / アカウント作成";
             }
         }
     });
 
-    // ログアウト処理
     logoutBtn.addEventListener('click', () => {
         if (confirm("ログアウトしますか？")) {
             signOut(auth);
         }
     });
 
-    // ログイン状態の監視（自動ログイン処理）
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUserUid = user.uid;
@@ -281,7 +296,6 @@
                 updateMissionView();
                 updateStatusDisplay();
             } else {
-                // 初回ログイン時はプロフィール登録画面を表示
                 loginSection.classList.add('hidden');
                 profileSection.classList.remove('hidden');
             }
@@ -289,10 +303,11 @@
             loginSection.classList.remove('hidden');
             mainSection.classList.add('hidden');
             profileSection.classList.add('hidden');
+            loginBtn.disabled = false;
+            loginBtn.textContent = "ログイン / アカウント作成";
         }
     });
 
-    // プロフィール保存（初回登録完了）
     saveProfileBtn.addEventListener('click', async () => {
         const grade = document.getElementById('input-grade').value;
         const gender = document.getElementById('input-gender').value;
@@ -315,8 +330,14 @@
                 transaction.set(counterRef, { count: nextCount }, { merge: true });
             });
 
+            // メールアドレスから学籍番号を抽出（自動ログイン時対策）
+            let displayStudentId = currentStudentId;
+            if (!displayStudentId && auth.currentUser && auth.currentUser.email) {
+                displayStudentId = auth.currentUser.email.split('@')[0].toUpperCase();
+            }
+
             const initialData = {
-                studentId: currentStudentId || "UNKNOWN",
+                studentId: displayStudentId || "UNKNOWN",
                 grade: grade,
                 gender: gender,
                 group: assignedGroup,
@@ -351,7 +372,7 @@
 
         } catch (e) {
             console.error("Registration error: ", e);
-            alert("登録エラーが発生しました。");
+            alert("登録エラーが発生しました: " + e.message);
             saveProfileBtn.disabled = false;
         }
     });
