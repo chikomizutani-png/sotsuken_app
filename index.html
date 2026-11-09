@@ -26,9 +26,17 @@
         .mission-item { text-align: left; background: #fff; border: 1px solid #ddd; padding: 12px; margin: 8px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
         .mission-title { font-weight: bold; font-size: 14px; }
         .mission-desc { font-size: 12px; color: #666; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .badge.yet { background-color: #ffe58f; color: #d46b08; }
-        .badge.done { background-color: #b7eb8f; color: #389e0d; }
+        
+        /* ミッションボタンのステータス別スタイル */
+        .badge-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; border: none; cursor: pointer; }
+        .badge-btn.yet { background-color: #ffe58f; color: #d46b08; cursor: not-allowed; }
+        .badge-btn.ready { background-color: #ff9800; color: white; cursor: pointer; animation: pulse 1.2s infinite alternate; }
+        .badge-btn.done { background-color: #b7eb8f; color: #389e0d; cursor: default; }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.05); }
+        }
         
         .genre-badge { display: inline-block; background-color: #673ab7; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; vertical-align: middle; margin-left: 8px; }
         
@@ -149,7 +157,7 @@
     import { allQuizData } from './quiz-data.js';
 
     const firebaseConfig = {
-        apiKey: "AIzaSyAlX1NgXocC_brArEeGL2XbP8prAZqoMx4",
+        apiKey: "AIzaSyAlX1NgXocC_brArEzGL2XbP8prAZqoMx4",
         authDomain: "sotsuken-2826c.firebaseapp.com",
         projectId: "sotsuken-2826c",
         storageBucket: "sotsuken-2826c.firebasestorage.app",
@@ -264,7 +272,13 @@
                 stampCount: 1,
                 missionPoints: 0, 
                 lastLoginDate: todayFormatted,
-                m1_done: false, m2_done: false, m3_done: false, m4_done: false,
+
+                // 各ミッションの「条件達成フラグ(ready)」と「報酬受け取り完了フラグ(claimed)」
+                m1_ready: false, m1_claimed: false,
+                m2_ready: false, m2_claimed: false,
+                m3_ready: false, m3_claimed: false,
+                m4_ready: false, m4_claimed: false,
+
                 lastMissionDate: todayFormatted
             };
 
@@ -329,16 +343,18 @@
             updateData.loginDays = increment(1);
             updateData.stampCount = newStampCount;
             updateData.lastLoginDate = todayStr;
-            updateData.m1_done = false;
-            updateData.m2_done = false;
-            updateData.m3_done = false;
-            updateData.m4_done = false;
+            
+            // 日付が変わったらミッション状態をリセット
+            updateData.m1_ready = false; updateData.m1_claimed = false;
+            updateData.m2_ready = false; updateData.m2_claimed = false;
+            updateData.m3_ready = false; updateData.m3_claimed = false;
+            updateData.m4_ready = false; updateData.m4_claimed = false;
             updateData.lastMissionDate = todayStr;
         }
         
-        if (data.lastMissionDate === todayStr && !data.m4_done) {
-            updateData.m4_done = true;
-            updateData.missionPoints = increment(1); 
+        // ミッション4: ページ確認で「条件達成 (ready)」をセット
+        if (data.lastMissionDate === todayStr && !data.m4_ready && !data.m4_claimed) {
+            updateData.m4_ready = true;
         }
 
         await updateDoc(userDocRef, updateData);
@@ -357,69 +373,97 @@
         let missions = [];
         if (userData.group === "A") {
             missions = [
-                { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', done: userData.m1_done },
-                { id: 'm2', title: 'クイズで満点を取る', desc: '全問正解を1回達成しよう', done: userData.m2_done },
-                { id: 'm3', title: 'クイズに2回挑戦する', desc: 'プレイ回数を増やそう', done: userData.m3_done },
-                { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', done: userData.m4_done }
+                { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', ready: userData.m1_ready, claimed: userData.m1_claimed },
+                { id: 'm2', title: 'クイズで満点を取る', desc: '全問正解を1回達成しよう', ready: userData.m2_ready, claimed: userData.m2_claimed },
+                { id: 'm3', title: 'クイズに2回挑戦する', desc: 'プレイ回数を増やそう', ready: userData.m3_ready, claimed: userData.m3_claimed },
+                { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', ready: userData.m4_ready, claimed: userData.m4_claimed }
             ];
         } else {
             missions = [
-                { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', done: userData.m1_done },
-                { id: 'm2', title: '「野球部」に関する問題を1問引き当てて正解する', desc: '運よく野球部の問題が出題され、正解すると達成！', done: userData.m2_done },
-                { id: 'm3', title: '「歴史」に関する問題が出題される', desc: 'クイズ中に「歴史（興亜専門学校など）」の問題が1問でも出れば達成！', done: userData.m3_done },
-                { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', done: userData.m4_done }
+                { id: 'm1', title: 'クイズを1回プレイする', desc: '今日のクイズを最後まで解こう', ready: userData.m1_ready, claimed: userData.m1_claimed },
+                { id: 'm2', title: '「野球部」に関する問題を1問引き当てて正解する', desc: '運よく野球部の問題が出題され、正解すると達成！', ready: userData.m2_ready, claimed: userData.m2_claimed },
+                { id: 'm3', title: '「歴史」に関する問題が出題される', desc: 'クイズ中に「歴史（興亜専門学校など）」の問題が1問でも出れば達成！', ready: userData.m3_ready, claimed: userData.m3_claimed },
+                { id: 'm4', title: 'ミッションページを確認する', desc: 'この画面を開くだけで達成！', ready: userData.m4_ready, claimed: userData.m4_claimed }
             ];
         }
 
         missions.forEach(m => {
             const item = document.createElement('div');
             item.classList.add('mission-item');
+            
+            let btnClass = 'yet';
+            let btnText = '未達成';
+            let isDisabled = true;
+
+            if (m.claimed) {
+                btnClass = 'done';
+                btnText = '達成済';
+                isDisabled = true;
+            } else if (m.ready) {
+                btnClass = 'ready';
+                btnText = 'クリア！受け取る';
+                isDisabled = false; // 手動タップ可能！
+            }
+
             item.innerHTML = `
                 <div>
                     <div class="mission-title">${m.title}</div>
                     <div class="mission-desc">${m.desc}</div>
                 </div>
                 <div style="display:flex; align-items:center;">
-                    <span class="badge ${m.done ? 'done' : 'yet'}">${m.done ? '達成済' : '未達成'}</span>
+                    <button class="badge-btn ${btnClass}" ${isDisabled ? 'disabled' : ''} id="btn-${m.id}">${btnText}</button>
                 </div>
             `;
             listContainer.appendChild(item);
+
+            // 「クリア！受け取る」ボタンを押したときの処理を紐付け
+            if (m.ready && !m.claimed) {
+                item.querySelector(`#btn-${m.id}`).addEventListener('click', () => claimMission(m.id));
+            }
         });
+    }
+
+    // ミッション報酬の手動受け取り処理
+    async function claimMission(missionId) {
+        if (!currentUserUid || !userData) return;
+        const userDocRef = doc(db, "users", currentUserUid);
+        
+        let updateData = {};
+        updateData[`${missionId}_claimed`] = true;
+        updateData.missionPoints = increment(1); // 手動受け取りで初めてポイント追加！
+
+        await updateDoc(userDocRef, updateData);
+        alert(`🎉 ミッション達成報酬を獲得しました！ (+1pt)`);
+
+        const freshSnap = await getDoc(userDocRef);
+        userData = freshSnap.data();
+
+        updateMissionView();
+        updateStatusDisplay();
     }
 
     async function handleQuizEndMissions(playScore) {
         const userDocRef = doc(db, "users", currentUserUid);
         let updateData = { playCount: increment(1) };
-        let pointIncrement = 0;
 
-        if (!userData.m1_done) { updateData.m1_done = true; userData.m1_done = true; pointIncrement++; }
-
-        if (userData.group === "A") {
-            if (playScore === 7 && !userData.m2_done) {
-                updateData.m2_done = true;
-                userData.m2_done = true;
-                pointIncrement++;
-            }
-            if ((userData.playCount + 1) >= 2 && !userData.m3_done) {
-                updateData.m3_done = true;
-                userData.m3_done = true;
-                pointIncrement++;
-            }
-        } else {
-            if (roundTagsCorrect["野球部"] && roundTagsCorrect["野球部"] >= 1 && !userData.m2_done) {
-                updateData.m2_done = true;
-                userData.m2_done = true;
-                pointIncrement++;
-            }
-            if (roundTagsSeen["歴史"] && roundTagsSeen["歴史"] >= 1 && !userData.m3_done) {
-                updateData.m3_done = true;
-                userData.m3_done = true;
-                pointIncrement++;
-            }
+        if (!userData.m1_ready && !userData.m1_claimed) { 
+            updateData.m1_ready = true; 
         }
 
-        if (pointIncrement > 0) {
-            updateData.missionPoints = increment(pointIncrement);
+        if (userData.group === "A") {
+            if (playScore === 7 && !userData.m2_ready && !userData.m2_claimed) {
+                updateData.m2_ready = true;
+            }
+            if ((userData.playCount + 1) >= 2 && !userData.m3_ready && !userData.m3_claimed) {
+                updateData.m3_ready = true;
+            }
+        } else {
+            if (roundTagsCorrect["野球部"] && roundTagsCorrect["野球部"] >= 1 && !userData.m2_ready && !userData.m2_claimed) {
+                updateData.m2_ready = true;
+            }
+            if (roundTagsSeen["歴史"] && roundTagsSeen["歴史"] >= 1 && !userData.m3_ready && !userData.m3_claimed) {
+                updateData.m3_ready = true;
+            }
         }
 
         await updateDoc(userDocRef, updateData);
@@ -493,6 +537,7 @@
         roundTagsCorrect = {};
         loadQuiz();
     }
+
     function loadQuiz() {
         const choicesContainer = document.getElementById('choices');
         const genreBadge = document.getElementById('quiz-genre');
@@ -520,6 +565,7 @@
             choicesContainer.appendChild(button);
         });
     }
+
     function checkAnswer(selectedIndex) {
         const currentQuiz = currentPlayQuizData[currentQuestionIndex];
         const tag = currentQuiz.tag;
@@ -534,6 +580,7 @@
         if (currentQuestionIndex < currentPlayQuizData.length) { loadQuiz(); } 
         else { showScore(); }
     }
+
     function showScore() {
         document.getElementById('quiz-meta').textContent = "ゲーム終了！";
         document.getElementById('quiz-genre').classList.add('hidden');
