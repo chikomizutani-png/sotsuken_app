@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>堀ゼミ毎日クイズアプリ</title>
-    <!-- Google 認証用ライブラリ -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         #quiz-container { background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; text-align: center; max-height: 90vh; overflow-y: auto; }
@@ -44,28 +42,30 @@
         .progress-container { background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 20px; margin-top: 5px; overflow: hidden; position: relative; }
         .progress-bar { background-color: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease; }
         .progress-text { position: absolute; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #333; top: 1px; left: 0; }
-        
-        #g_id_onload { margin: 15px 0; display: flex; justify-content: center; }
     </style>
 </head>
 <body>
 
 <div id="quiz-container">
-    <!-- 1. ログイン画面 -->
+    <!-- 1. ログイン/新規作成画面 -->
     <div id="login-section">
         <h2>クイズアプリへようこそ</h2>
-        <p style="font-size: 14px; color:#666;">研究用データ収集にご協力をお願いします</p>
-        <div id="g_id_onload_container"></div>
-        <button id="login-btn" class="btn">Googleでログイン</button>
-    </div>
-
-    <!-- 2. プロフィール入力画面 -->
-    <div id="profile-section" class="hidden">
-        <h2>プロフィール登録</h2>
+        <p style="font-size: 14px; color:#666;">学籍番号とパスワードを入力してください</p>
         <div class="form-group">
             <label>学籍番号</label>
-            <input type="text" id="input-student-id" placeholder="例: 24X1234">
+            <input type="text" id="login-student-id" placeholder="例: 24X1234">
         </div>
+        <div class="form-group">
+            <label>パスワード（6文字以上）</label>
+            <input type="password" id="login-password" placeholder="任意のパスワード">
+        </div>
+        <button id="login-btn" class="btn">ログイン / アカウント作成</button>
+        <p style="font-size: 11px; color:#888; margin-top: 10px;">※初めて入力した学籍番号の場合、自動的に新規登録されます。</p>
+    </div>
+
+    <!-- 2. プロフィール初回入力画面 -->
+    <div id="profile-section" class="hidden">
+        <h2>プロフィール登録</h2>
         <div class="form-group">
             <label>学年</label>
             <select id="input-grade">
@@ -84,12 +84,15 @@
                 <option value="その他">その他</option>
             </select>
         </div>
-        <button id="save-profile-btn" class="btn">登録して開始</button>
+        <button id="save-profile-btn" class="btn">登録してアプリを開始</button>
     </div>
 
     <!-- 3. メイン画面 -->
     <div id="main-section" class="hidden">
-        <div id="user-info"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div id="user-info" style="font-size: 14px; color: #555; text-align: left;"></div>
+            <button id="logout-btn" style="padding: 4px 8px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer;">ログアウト</button>
+        </div>
         <div id="bonus-message" style="color: #ff4d4f; font-weight: bold; margin-bottom: 15px;"></div>
         
         <div class="tab-container">
@@ -154,7 +157,15 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInWithCredential, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { 
+        getAuth, 
+        signInWithEmailAndPassword, 
+        createUserWithEmailAndPassword, 
+        setPersistence, 
+        browserLocalPersistence, 
+        onAuthStateChanged,
+        signOut
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     
     import { allQuizData } from './quiz-data.js';
@@ -173,10 +184,14 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
+    // ログイン状態をブラウザに永続保存（アプリを開いたときの自動ログイン用）
+    setPersistence(auth, browserLocalPersistence);
+
     let currentPlayQuizData = [];
     let currentQuestionIndex = 0;
     let score = 0;
     let currentUserUid = null;
+    let currentStudentId = "";
     let userData = null;
     
     let roundTagsSeen = {}; 
@@ -186,6 +201,7 @@
     const profileSection = document.getElementById('profile-section');
     const mainSection = document.getElementById('main-section');
     const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
     const saveProfileBtn = document.getElementById('save-profile-btn');
     const userInfo = document.getElementById('user-info');
     const bonusMessage = document.getElementById('bonus-message');
@@ -200,43 +216,60 @@
     const pageStamp = document.getElementById('page-stamp');
     const pageStatus = document.getElementById('page-status');
 
-    // Google One Tap / IDトークンログイン受取
-    window.handleCredentialResponse = (response) => {
-        const credential = GoogleAuthProvider.credential(response.credential);
-        signInWithCredential(auth, credential).catch((error) => {
-            console.error("Credential Error: ", error);
-            alert("ログインエラー: " + error.message);
-        });
-    };
+    // ログイン / 新規登録 処理
+    loginBtn.addEventListener('click', async () => {
+        const studentId = document.getElementById('login-student-id').value.trim().toLowerCase();
+        const password = document.getElementById('login-password').value.trim();
 
-    loginBtn.addEventListener('click', () => {
-        if (window.google && window.google.accounts) {
-            window.google.accounts.id.prompt();
-        } else {
-            alert("Google認証を読み込んでいます。少し待ってから再度お試しください。");
+        if (!studentId || !password) {
+            alert("学籍番号とパスワードを入力してください。");
+            return;
+        }
+        if (password.length < 6) {
+            alert("パスワードは6文字以上で入力してください。");
+            return;
+        }
+
+        // Firebase Authで扱えるダミーのメール形式に変換
+        const email = `${studentId}@quiz-app.local`;
+        currentStudentId = studentId.toUpperCase();
+
+        try {
+            // まず既存アカウントとしてログインを試行
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error) {
+            // アカウントが存在しない場合は新規作成
+            if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                try {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                } catch (createError) {
+                    alert("ログイン/登録に失敗しました: " + createError.message);
+                }
+            } else {
+                alert("ログインエラー: " + error.message);
+            }
         }
     });
 
-    window.onload = () => {
-        if (window.google && window.google.accounts) {
-            window.google.accounts.id.initialize({
-                client_id: "98653503495-web.apps.googleusercontent.com", // FirebaseのクライアントID
-                callback: handleCredentialResponse
-            });
-            window.google.accounts.id.prompt(); // ワンタップ表示
+    // ログアウト処理
+    logoutBtn.addEventListener('click', () => {
+        if (confirm("ログアウトしますか？")) {
+            signOut(auth);
         }
-    };
+    });
 
+    // ログイン状態の監視（自動ログイン処理）
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUserUid = user.uid;
-            userInfo.textContent = `ログイン中: ${user.displayName} さん`;
             
             const userDocRef = doc(db, "users", user.uid);
             const userDocSnap = await getDoc(userDocRef);
 
             if (userDocSnap.exists()) {
                 userData = userDocSnap.data();
+                userInfo.textContent = `学籍番号: ${userData.studentId}`;
+                
                 await handleLoginCounters(user.uid, userData);
                 
                 loginSection.classList.add('hidden');
@@ -248,6 +281,7 @@
                 updateMissionView();
                 updateStatusDisplay();
             } else {
+                // 初回ログイン時はプロフィール登録画面を表示
                 loginSection.classList.add('hidden');
                 profileSection.classList.remove('hidden');
             }
@@ -258,14 +292,12 @@
         }
     });
 
+    // プロフィール保存（初回登録完了）
     saveProfileBtn.addEventListener('click', async () => {
-        const studentId = document.getElementById('input-student-id').value.trim();
         const grade = document.getElementById('input-grade').value;
         const gender = document.getElementById('input-gender').value;
 
-        if (!studentId) { alert("学籍番号を入力してください。"); return; }
         saveProfileBtn.disabled = true;
-
         const todayFormatted = getFormattedDate(new Date());
         const counterRef = doc(db, "system", "user_counter");
 
@@ -284,7 +316,7 @@
             });
 
             const initialData = {
-                studentId: studentId,
+                studentId: currentStudentId || "UNKNOWN",
                 grade: grade,
                 gender: gender,
                 group: assignedGroup,
@@ -305,6 +337,7 @@
 
             await setDoc(doc(db, "users", currentUserUid), initialData);
             userData = initialData;
+            userInfo.textContent = `学籍番号: ${userData.studentId}`;
 
             bonusMessage.textContent = `🎁 連続ログインスタート（1日目）！`;
             
