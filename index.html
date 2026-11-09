@@ -26,23 +26,15 @@
         .mission-item { text-align: left; background: #fff; border: 1px solid #ddd; padding: 12px; margin: 8px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
         .mission-title { font-weight: bold; font-size: 14px; }
         .mission-desc { font-size: 12px; color: #666; }
-        
         .badge-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; border: none; cursor: pointer; }
         .badge-btn.yet { background-color: #ffe58f; color: #d46b08; cursor: not-allowed; }
-        .badge-btn.ready { background-color: #ff9800; color: white; cursor: pointer; animation: pulse 1.2s infinite alternate; }
+        .badge-btn.ready { background-color: #ff9800; color: white; cursor: pointer; }
         .badge-btn.done { background-color: #b7eb8f; color: #389e0d; cursor: default; }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            100% { transform: scale(1.05); }
-        }
-        
         .genre-badge { display: inline-block; background-color: #673ab7; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; vertical-align: middle; margin-left: 8px; }
-        
         .progress-container { background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 20px; margin-top: 5px; overflow: hidden; position: relative; }
         .progress-bar { background-color: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease; }
         .progress-text { position: absolute; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #333; top: 1px; left: 0; }
-        .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; }
+        .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; background: #fff1f0; padding: 8px; border-radius: 4px; border: 1px solid #ffa39e; }
     </style>
 </head>
 <body>
@@ -60,8 +52,8 @@
             <label>パスワード（6文字以上）</label>
             <input type="password" id="login-password" placeholder="任意のパスワード">
         </div>
-        <button id="login-btn" class="btn">ログイン / アカウント作成</button>
-        <div id="login-error" class="error-msg"></div>
+        <button id="login-btn" class="btn" type="button">ログイン / アカウント作成</button>
+        <div id="login-error" class="error-msg hidden"></div>
         <p style="font-size: 11px; color:#888; margin-top: 10px;">※初めて入力した学籍番号の場合、自動的に新規登録されます。</p>
     </div>
 
@@ -86,7 +78,7 @@
                 <option value="その他">その他</option>
             </select>
         </div>
-        <button id="save-profile-btn" class="btn">登録してアプリを開始</button>
+        <button id="save-profile-btn" class="btn" type="button">登録してアプリを開始</button>
     </div>
 
     <!-- 3. メイン画面 -->
@@ -170,7 +162,13 @@
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
     
-    import { allQuizData } from './quiz-data.js';
+    let allQuizData = [];
+    try {
+        const quizModule = await import('./quiz-data.js');
+        allQuizData = quizModule.allQuizData;
+    } catch(err) {
+        showError("quiz-data.js 読み込み失敗: " + err.message);
+    }
 
     const firebaseConfig = {
         apiKey: "AIzaSyAlX1NgXocC_brArEeGL2XbP8prAZqoMx4",
@@ -194,7 +192,6 @@
     let currentUserUid = null;
     let currentStudentId = "";
     let userData = null;
-    
     let roundTagsSeen = {}; 
     let roundTagsCorrect = {};
 
@@ -207,31 +204,30 @@
     const userInfo = document.getElementById('user-info');
     const bonusMessage = document.getElementById('bonus-message');
     const loginError = document.getElementById('login-error');
-    
-    const tabQuiz = document.getElementById('tab-quiz');
-    const tabMission = document.getElementById('tab-mission');
-    const tabStamp = document.getElementById('tab-stamp');
-    const tabStatus = document.getElementById('tab-status');
-    
-    const pageQuiz = document.getElementById('page-quiz');
-    const pageMission = document.getElementById('page-mission');
-    const pageStamp = document.getElementById('page-stamp');
-    const pageStatus = document.getElementById('page-status');
 
-    // ログイン / 新規登録 処理（デバッグ強化版）
-    loginBtn.addEventListener('click', async () => {
-        loginError.textContent = "";
+    function showError(msg) {
+        loginError.classList.remove('hidden');
+        loginError.innerHTML = "⚠️ " + msg;
+        console.error(msg);
+    }
+
+    function clearError() {
+        loginError.classList.add('hidden');
+        loginError.innerHTML = "";
+    }
+
+    // ログイン処理（画面直出しデバッグ版）
+    loginBtn.onclick = async function() {
+        clearError();
         const rawStudentId = document.getElementById('login-student-id').value.trim();
         const password = document.getElementById('login-password').value.trim();
 
         if (!rawStudentId || !password) {
-            alert("学籍番号とパスワードの両方を入力してください。");
-            loginError.textContent = "学籍番号とパスワードを入力してください。";
+            showError("学籍番号とパスワードを入力してください。");
             return;
         }
         if (password.length < 6) {
-            alert("パスワードは6文字以上で入力してください。");
-            loginError.textContent = "パスワードは6文字以上で入力してください。";
+            showError("パスワードは6文字以上で入力してください。");
             return;
         }
 
@@ -243,41 +239,33 @@
         currentStudentId = rawStudentId.toUpperCase();
 
         try {
-            // ① ログインを試行
             await signInWithEmailAndPassword(auth, email, password);
-            alert("ログインに成功しました！");
         } catch (error) {
-            // ② 既存ユーザーでない、または資格情報エラーの場合は新規登録を試す
             if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
                 try {
-                    alert("新規アカウントとして登録を開始します...");
                     await createUserWithEmailAndPassword(auth, email, password);
-                    alert("新規登録が完了しました！");
                 } catch (createError) {
-                    alert("登録中にエラーが発生しました:\nコード: " + createError.code + "\n詳細: " + createError.message);
-                    loginError.textContent = "登録エラー: " + createError.message;
+                    showError("新規登録エラー: " + createError.code + "<br>" + createError.message);
                     loginBtn.disabled = false;
                     loginBtn.textContent = "ログイン / アカウント作成";
                 }
             } else {
-                alert("ログイン中にエラーが発生しました:\nコード: " + error.code + "\n詳細: " + error.message);
-                loginError.textContent = "ログインエラー: " + error.message;
+                showError("ログインエラー: " + error.code + "<br>" + error.message);
                 loginBtn.disabled = false;
                 loginBtn.textContent = "ログイン / アカウント作成";
             }
         }
-    });
+    };
 
-    logoutBtn.addEventListener('click', () => {
+    logoutBtn.onclick = function() {
         if (confirm("ログアウトしますか？")) {
             signOut(auth);
         }
-    });
+    };
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUserUid = user.uid;
-            
             try {
                 const userDocRef = doc(db, "users", user.uid);
                 const userDocSnap = await getDoc(userDocRef);
@@ -285,13 +273,10 @@
                 if (userDocSnap.exists()) {
                     userData = userDocSnap.data();
                     userInfo.textContent = `学籍番号: ${userData.studentId}`;
-                    
                     await handleLoginCounters(user.uid, userData);
-                    
                     loginSection.classList.add('hidden');
                     profileSection.classList.add('hidden');
                     mainSection.classList.remove('hidden');
-                    
                     startNewGame();
                     updateStampCardView();
                     updateMissionView();
@@ -300,8 +285,8 @@
                     loginSection.classList.add('hidden');
                     profileSection.classList.remove('hidden');
                 }
-            } catch (firestoreErr) {
-                alert("データベース読込エラー: " + firestoreErr.message);
+            } catch(e) {
+                showError("Firestore接続エラー: " + e.message);
             }
         } else {
             loginSection.classList.remove('hidden');
@@ -312,7 +297,7 @@
         }
     });
 
-    saveProfileBtn.addEventListener('click', async () => {
+    saveProfileBtn.onclick = async function() {
         const grade = document.getElementById('input-grade').value;
         const gender = document.getElementById('input-gender').value;
 
@@ -350,35 +335,28 @@
                 stampCount: 1,
                 missionPoints: 0, 
                 lastLoginDate: todayFormatted,
-
                 m1_ready: false, m1_claimed: false,
                 m2_ready: false, m2_claimed: false,
                 m3_ready: false, m3_claimed: false,
                 m4_ready: false, m4_claimed: false,
-
                 lastMissionDate: todayFormatted
             };
 
             await setDoc(doc(db, "users", currentUserUid), initialData);
             userData = initialData;
             userInfo.textContent = `学籍番号: ${userData.studentId}`;
-
             bonusMessage.textContent = `🎁 連続ログインスタート（1日目）！`;
-            
             profileSection.classList.add('hidden');
             mainSection.classList.remove('hidden');
-            
             startNewGame();
             updateStampCardView();
             updateMissionView();
             updateStatusDisplay();
-
         } catch (e) {
-            console.error("Registration error: ", e);
-            alert("プロフィール保存エラー: " + e.message);
+            showError("プロフィール保存エラー: " + e.message);
             saveProfileBtn.disabled = false;
         }
-    });
+    };
 
     function getFormattedDate(d) {
         return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
@@ -388,12 +366,10 @@
         const now = new Date();
         const todayStr = getFormattedDate(now);
         const userDocRef = doc(db, "users", uid);
-
         let updateData = { loginCount: increment(1) };
 
         if (data.lastLoginDate !== todayStr) {
             const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            
             let isConsecutive = false;
             if (data.lastLoginDate) {
                 const parts = data.lastLoginDate.split('/');
@@ -401,10 +377,7 @@
                     const lastDate = new Date(parts[0], parts[1] - 1, parts[2]);
                     const diffTime = todayDate - lastDate;
                     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    if (diffDays === 1) {
-                        isConsecutive = true;
-                    }
+                    if (diffDays === 1) isConsecutive = true;
                 }
             }
 
@@ -421,7 +394,6 @@
             updateData.loginDays = increment(1);
             updateData.stampCount = newStampCount;
             updateData.lastLoginDate = todayStr;
-            
             updateData.m1_ready = false; updateData.m1_claimed = false;
             updateData.m2_ready = false; updateData.m2_claimed = false;
             updateData.m3_ready = false; updateData.m3_claimed = false;
@@ -466,7 +438,6 @@
         missions.forEach(m => {
             const item = document.createElement('div');
             item.classList.add('mission-item');
-            
             let btnClass = 'yet';
             let btnText = '未達成';
             let isDisabled = true;
@@ -493,7 +464,7 @@
             listContainer.appendChild(item);
 
             if (m.ready && !m.claimed) {
-                item.querySelector(`#btn-${m.id}`).addEventListener('click', () => claimMission(m.id));
+                item.querySelector(`#btn-${m.id}`).onclick = () => claimMission(m.id);
             }
         });
     }
@@ -501,17 +472,14 @@
     async function claimMission(missionId) {
         if (!currentUserUid || !userData) return;
         const userDocRef = doc(db, "users", currentUserUid);
-        
         let updateData = {};
         updateData[`${missionId}_claimed`] = true;
         updateData.missionPoints = increment(1);
 
         await updateDoc(userDocRef, updateData);
         alert(`🎉 ミッション達成報酬を獲得しました！ (+1pt)`);
-
         const freshSnap = await getDoc(userDocRef);
         userData = freshSnap.data();
-
         updateMissionView();
         updateStatusDisplay();
     }
@@ -520,31 +488,19 @@
         const userDocRef = doc(db, "users", currentUserUid);
         let updateData = { playCount: increment(1) };
 
-        if (!userData.m1_ready && !userData.m1_claimed) { 
-            updateData.m1_ready = true; 
-        }
+        if (!userData.m1_ready && !userData.m1_claimed) updateData.m1_ready = true;
 
         if (userData.group === "A") {
-            if (playScore === 7 && !userData.m2_ready && !userData.m2_claimed) {
-                updateData.m2_ready = true;
-            }
-            if ((userData.playCount + 1) >= 2 && !userData.m3_ready && !userData.m3_claimed) {
-                updateData.m3_ready = true;
-            }
+            if (playScore === 7 && !userData.m2_ready && !userData.m2_claimed) updateData.m2_ready = true;
+            if ((userData.playCount + 1) >= 2 && !userData.m3_ready && !userData.m3_claimed) updateData.m3_ready = true;
         } else {
-            if (roundTagsCorrect["野球部"] && roundTagsCorrect["野球部"] >= 1 && !userData.m2_ready && !userData.m2_claimed) {
-                updateData.m2_ready = true;
-            }
-            if (roundTagsSeen["歴史"] && roundTagsSeen["歴史"] >= 1 && !userData.m3_ready && !userData.m3_claimed) {
-                updateData.m3_ready = true;
-            }
+            if (roundTagsCorrect["野球部"] && roundTagsCorrect["野球部"] >= 1 && !userData.m2_ready && !userData.m2_claimed) updateData.m2_ready = true;
+            if (roundTagsSeen["歴史"] && roundTagsSeen["歴史"] >= 1 && !userData.m3_ready && !userData.m3_claimed) updateData.m3_ready = true;
         }
 
         await updateDoc(userDocRef, updateData);
-        
         const freshSnap = await getDoc(userDocRef);
         userData = freshSnap.data();
-        
         updateStatusDisplay();
     }
 
@@ -578,32 +534,33 @@
         const currentPoints = userData.missionPoints || 0;
         const maxPoints = 40; 
         const percentage = Math.min((currentPoints / maxPoints) * 100, 100);
-        
         document.getElementById('status-points-bar').style.width = `${percentage}%`;
         document.getElementById('status-points-text').textContent = `${currentPoints} / ${maxPoints} pt`;
     }
 
-    tabQuiz.addEventListener('click', () => { switchTab(tabQuiz, pageQuiz); });
-    
-    tabMission.addEventListener('click', async () => { 
-        switchTab(tabMission, pageMission); 
-        if (currentUserUid && userData) { 
-            await handleLoginCounters(currentUserUid, userData); 
-        }
+    document.getElementById('tab-quiz').onclick = () => switchTab(document.getElementById('tab-quiz'), document.getElementById('page-quiz'));
+    document.getElementById('tab-mission').onclick = async () => { 
+        switchTab(document.getElementById('tab-mission'), document.getElementById('page-mission')); 
+        if (currentUserUid && userData) await handleLoginCounters(currentUserUid, userData); 
         updateMissionView(); 
-    });
-    
-    tabStamp.addEventListener('click', () => { switchTab(tabStamp, pageStamp); updateStampCardView(); });
-    tabStatus.addEventListener('click', () => { switchTab(tabStatus, pageStatus); updateStatusDisplay(); });
+    };
+    document.getElementById('tab-stamp').onclick = () => { switchTab(document.getElementById('tab-stamp'), document.getElementById('page-stamp')); updateStampCardView(); };
+    document.getElementById('tab-status').onclick = () => { switchTab(document.getElementById('tab-status'), document.getElementById('page-status')); updateStatusDisplay(); };
 
     function switchTab(activeTab, activePage) {
-        [tabQuiz, tabMission, tabStamp, tabStatus].forEach(t => t.classList.remove('active'));
-        [pageQuiz, pageMission, pageStamp, pageStatus].forEach(p => p.classList.add('hidden'));
+        const tabs = [document.getElementById('tab-quiz'), document.getElementById('tab-mission'), document.getElementById('tab-stamp'), document.getElementById('tab-status')];
+        const pages = [document.getElementById('page-quiz'), document.getElementById('page-mission'), document.getElementById('page-stamp'), document.getElementById('page-status')];
+        tabs.forEach(t => t.classList.remove('active'));
+        pages.forEach(p => p.classList.add('hidden'));
         activeTab.classList.add('active');
         activePage.classList.remove('hidden');
     }
 
     function startNewGame() {
+        if (!allQuizData || allQuizData.length === 0) {
+            document.getElementById('question').textContent = "クイズデータの読み込みに失敗しています。";
+            return;
+        }
         currentPlayQuizData = [...allQuizData].sort(() => 0.5 - Math.random()).slice(0, 7);
         currentQuestionIndex = 0;
         score = 0;
@@ -621,11 +578,9 @@
         document.getElementById('result').textContent = '';
         
         const currentQuiz = currentPlayQuizData[currentQuestionIndex];
-        
         quizMeta.textContent = `Q${currentQuestionIndex + 1}/7`;
         genreBadge.textContent = currentQuiz.tag;
         genreBadge.classList.remove('hidden');
-        
         document.getElementById('question').textContent = currentQuiz.question;
 
         const tag = currentQuiz.tag;
@@ -635,7 +590,7 @@
             const button = document.createElement('button');
             button.innerText = choice;
             button.classList.add('btn');
-            button.addEventListener('click', () => checkAnswer(index));
+            button.onclick = () => checkAnswer(index);
             choicesContainer.appendChild(button);
         });
     }
@@ -664,7 +619,7 @@
             <p>結果: 7問中 ${score} 問正解！</p>
             <button id="retry-btn" class="btn">もう一度遊ぶ</button>
         `;
-        document.getElementById('retry-btn').addEventListener('click', startNewGame);
+        document.getElementById('retry-btn').onclick = startNewGame;
         handleQuizEndMissions(score);
     }
 </script>
