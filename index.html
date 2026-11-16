@@ -625,13 +625,13 @@
         const currentQuiz = currentPlayQuizData[currentQuestionIndex];
         quizMeta.textContent = `Q${currentQuestionIndex + 1}/7`;
         genreBadge.textContent = currentQuiz.tag;
-
+        genreBadge.style.backgroundColor = ({ "亜細亜大学": "#2e7d32", "野球部": "#d32f2f", "武蔵野市": "#0288d1", "雑学・なぞなぞ": "#f57c00", "理科": "#00897b", "国語": "#c2185b", "歴史": "#6d4c41", "音楽": "#7b1fa2" })[currentQuiz.tag] || "#673ab7";
         genreBadge.classList.remove('hidden');
         document.getElementById('question').textContent = currentQuiz.question;
 
         const tag = currentQuiz.tag;
         roundTagsSeen[tag] = (roundTagsSeen[tag] || 0) + 1;
-        genreBadge.style.backgroundColor = ({ "亜細亜大学": "#2e7d32", "野球部": "#d32f2f", "武蔵野市": "#0288d1", "雑学・なぞなぞ": "#f57c00", "理科": "#00897b", "国語": "#c2185b", "歴史": "#6d4c41", "音楽": "#7b1fa2" })[currentQuiz.tag] || "#673ab7";
+
         currentQuiz.choices.forEach((choice, index) => {
             const button = document.createElement('button');
             button.innerText = choice;
