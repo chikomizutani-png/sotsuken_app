@@ -38,7 +38,7 @@
         .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; background: #fff1f0; padding: 8px; border-radius: 4px; border: 1px solid #ffa39e; text-align: left; }
     </style>
     
-    <!-- 全てのクイズ用JSファイルを事前に読み込む -->
+    <!-- .jsファイルが存在すれば読み込む（無くてもエラーで止まらない） -->
     <script src="./quiz-data.js"></script>
     <script src="./asia-u_questions.js"></script>
     <script src="./asia-u-2_questions.js"></script>
@@ -170,14 +170,62 @@
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // 読み込んだ全てのクイズデータを1つに合体
-    const allQuizData = [].concat(
-        window.allQuizData || [],
-        window.asiaUQuizData || [],
-        window.asiaU2QuizData || [],
-        window.generalQuizData || [],
-        window.musashinoQuizData || []
-    );
+    let allQuizData = [];
+    let isQuizDataLoaded = false;
+
+    // .js と .json の両方から自動収集して合体する関数
+    async function loadAllQuizData() {
+        if (isQuizDataLoaded && allQuizData.length > 0) return;
+
+        // 1. window変数（.jsファイル）から取得
+        let combined = [].concat(
+            window.allQuizData || [],
+            window.asiaUQuizData || [],
+            window.asiaU2QuizData || [],
+            window.generalQuizData || [],
+            window.musashinoQuizData || []
+        );
+
+        // 2. もし0件、または元の.jsonファイルが残っている場合はfetchでも取得を試みる
+        const jsonFiles = [
+            './asia-u_questions.json',
+            './asia-u-2_questions.json',
+            './general_question.json',
+            './musashino-city_questions.json'
+        ];
+
+        for (const file of jsonFiles) {
+            try {
+                const res = await fetch(file);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data)) {
+                        combined = combined.concat(data);
+                    }
+                }
+            } catch (e) {
+                // ファイルが存在しない場合はスキップ
+            }
+        }
+
+        // 万が一 quiz-data.js が export 形式だった場合も救済
+        if (combined.length === 0) {
+            try {
+                const mod = await import('./quiz-data.js');
+                if (mod.allQuizData) combined = combined.concat(mod.allQuizData);
+            } catch (e) {}
+        }
+
+        // データの形式（tagやquestionの表記ゆれ）を統一して格納
+        allQuizData = combined.map(item => ({
+            question: item.question || item.q || "問題文なし",
+            choices: item.choices || item.options || [],
+            correct: typeof item.correct === 'number' ? item.correct : (item.answer || 0),
+            tag: item.tag || item.genre || item.category || "一般"
+        })).filter(item => item.choices.length > 0);
+
+        isQuizDataLoaded = true;
+    }
 
     const firebaseConfig = {
         apiKey: "AIzaSyAlX1NgXocC_brArEeGL2XbP8prAZqoMx4",
@@ -203,7 +251,7 @@
     let userData = null;
     let roundTagsSeen = {}; 
     let roundTagsCorrect = {};
-    let isClaimingMission = false; // 連打防止ロック用フラグ
+    let isClaimingMission = false;
 
     const loginSection = document.getElementById('login-section');
     const profileSection = document.getElementById('profile-section');
@@ -274,6 +322,7 @@
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUserUid = user.uid;
+            await loadAllQuizData(); // クイズデータを確実にロード
             try {
                 const userDocRef = doc(db, "users", user.uid);
                 const userDocSnap = await getDoc(userDocRef);
@@ -356,6 +405,7 @@
             bonusMessage.textContent = `🎁 連続ログインスタート（1日目）！`;
             profileSection.classList.add('hidden');
             mainSection.classList.remove('hidden');
+            await loadAllQuizData();
             startNewGame();
             updateStampCardView();
             updateMissionView();
@@ -478,7 +528,6 @@
         });
     }
 
-    // 連打防止策を施した報酬受取処理（トランザクション＋UIロック）
     async function claimMission(missionId, btnEl) {
         if (!currentUserUid || !userData || isClaimingMission) return;
         if (userData[`${missionId}_claimed`]) return;
@@ -499,7 +548,6 @@
                 if (!docSnap.exists()) return;
 
                 const latestData = docSnap.data();
-                // サーバー側データで既に受取済みなら処理を中断
                 if (latestData[`${missionId}_claimed`] === true) {
                     return;
                 }
@@ -601,7 +649,12 @@
 
     function startNewGame() {
         if (!allQuizData || allQuizData.length === 0) {
-            document.getElementById('question').textContent = "クイズデータの読み込みに失敗しています。";
+            document.getElementById('question').innerHTML = `
+                クイズデータの読み込みに失敗しています。<br>
+                <span style="font-size:12px; color:#666; font-weight:normal;">
+                (各クイズファイルの形式を確認してください)
+                </span>
+            `;
             return;
         }
         currentPlayQuizData = [...allQuizData].sort(() => 0.5 - Math.random()).slice(0, 7);
