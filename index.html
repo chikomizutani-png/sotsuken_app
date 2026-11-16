@@ -30,12 +30,20 @@
         .badge-btn.yet { background-color: #ffe58f; color: #d46b08; cursor: not-allowed; }
         .badge-btn.ready { background-color: #ff9800; color: white; cursor: pointer; }
         .badge-btn.done { background-color: #b7eb8f; color: #389e0d; cursor: default; }
+        .badge-btn:disabled { opacity: 0.7; cursor: not-allowed; }
         .genre-badge { display: inline-block; background-color: #673ab7; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; vertical-align: middle; margin-left: 8px; }
         .progress-container { background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 20px; margin-top: 5px; overflow: hidden; position: relative; }
         .progress-bar { background-color: #4caf50; height: 100%; width: 0%; transition: width 0.3s ease; }
         .progress-text { position: absolute; width: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #333; top: 1px; left: 0; }
         .error-msg { color: #ff4d4f; font-size: 13px; margin-top: 10px; font-weight: bold; background: #fff1f0; padding: 8px; border-radius: 4px; border: 1px solid #ffa39e; text-align: left; }
     </style>
+    
+    <!-- 全てのクイズ用JSファイルを事前に読み込む -->
+    <script src="./quiz-data.js"></script>
+    <script src="./asia-u_questions.js"></script>
+    <script src="./asia-u-2_questions.js"></script>
+    <script src="./general_question.js"></script>
+    <script src="./musashino-city_questions.js"></script>
 </head>
 <body>
 
@@ -161,17 +169,15 @@
         signOut
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    
-    // 外部ファイル読み込みエラーを防ぐためクイズデータを直書き
-    const allQuizData = [
-        { question: "亜細亜大学の創立年はいつ？", choices: ["1941年", "1950年", "1960年", "1975年"], correct: 0, tag: "歴史" },
-        { question: "亜細亜大学の建学の精神は？", choices: ["自由と進歩", "自律利他", "三方一両損", "質実剛健"], correct: 1, tag: "理念" },
-        { question: "硬式野球部が全日本大学野球選手権で優勝した回数は？", choices: ["1回", "2回", "4回", "6回"], correct: 2, tag: "野球部" },
-        { question: "キャンパスがある「武蔵野市」のシンボルツリーは？", choices: ["イチョウ", "ケヤキ", "サクラ", "ハナミズキ"], correct: 1, tag: "地域" },
-        { question: "亜細亜大学のアジア留学プログラム（AUAP）の主な派遣国は？", choices: ["アメリカ", "中国", "オーストラリア", "イギリス"], correct: 0, tag: "国際" },
-        { question: "亜細亜大学の前身となった学校の名前は？", choices: ["東洋専門学校", "興亜専門学校", "武蔵野高等学院", "日本アジア学院"], correct: 1, tag: "歴史" },
-        { question: "大学のキャンパス最寄り駅である「武蔵境駅」を通るJRの路線は？", choices: ["中央線", "山手線", "埼京線", "総武線（各駅停車）"], correct: 0, tag: "地域" }
-    ];
+
+    // 読み込んだ全てのクイズデータを1つに合体
+    const allQuizData = [].concat(
+        window.allQuizData || [],
+        window.asiaUQuizData || [],
+        window.asiaU2QuizData || [],
+        window.generalQuizData || [],
+        window.musashinoQuizData || []
+    );
 
     const firebaseConfig = {
         apiKey: "AIzaSyAlX1NgXocC_brArEeGL2XbP8prAZqoMx4",
@@ -197,6 +203,7 @@
     let userData = null;
     let roundTagsSeen = {}; 
     let roundTagsCorrect = {};
+    let isClaimingMission = false; // 連打防止ロック用フラグ
 
     const loginSection = document.getElementById('login-section');
     const profileSection = document.getElementById('profile-section');
@@ -218,7 +225,6 @@
         loginError.innerHTML = "";
     }
 
-    // ログイン処理
     loginBtn.addEventListener('click', async () => {
         clearError();
         const rawStudentId = document.getElementById('login-student-id').value.trim();
@@ -466,24 +472,59 @@
             listContainer.appendChild(item);
 
             if (m.ready && !m.claimed) {
-                item.querySelector(`#btn-${m.id}`).addEventListener('click', () => claimMission(m.id));
+                const btnEl = item.querySelector(`#btn-${m.id}`);
+                btnEl.addEventListener('click', () => claimMission(m.id, btnEl));
             }
         });
     }
 
-    async function claimMission(missionId) {
-        if (!currentUserUid || !userData) return;
-        const userDocRef = doc(db, "users", currentUserUid);
-        let updateData = {};
-        updateData[`${missionId}_claimed`] = true;
-        updateData.missionPoints = increment(1);
+    // 連打防止策を施した報酬受取処理（トランザクション＋UIロック）
+    async function claimMission(missionId, btnEl) {
+        if (!currentUserUid || !userData || isClaimingMission) return;
+        if (userData[`${missionId}_claimed`]) return;
 
-        await updateDoc(userDocRef, updateData);
-        alert(`🎉 ミッション達成報酬を獲得しました！ (+1pt)`);
-        const freshSnap = await getDoc(userDocRef);
-        userData = freshSnap.data();
-        updateMissionView();
-        updateStatusDisplay();
+        isClaimingMission = true;
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = '受取中...';
+        }
+
+        const userDocRef = doc(db, "users", currentUserUid);
+
+        try {
+            let isNewlyClaimed = false;
+
+            await runTransaction(db, async (transaction) => {
+                const docSnap = await transaction.get(userDocRef);
+                if (!docSnap.exists()) return;
+
+                const latestData = docSnap.data();
+                // サーバー側データで既に受取済みなら処理を中断
+                if (latestData[`${missionId}_claimed`] === true) {
+                    return;
+                }
+
+                let updateData = {};
+                updateData[`${missionId}_claimed`] = true;
+                updateData.missionPoints = (latestData.missionPoints || 0) + 1;
+
+                transaction.update(userDocRef, updateData);
+                isNewlyClaimed = true;
+            });
+
+            const freshSnap = await getDoc(userDocRef);
+            userData = freshSnap.data();
+
+            if (isNewlyClaimed) {
+                alert(`🎉 ミッション達成報酬を獲得しました！ (+1pt)`);
+            }
+        } catch (e) {
+            alert("報酬の受け取りに失敗しました: " + e.message);
+        } finally {
+            isClaimingMission = false;
+            updateMissionView();
+            updateStatusDisplay();
+        }
     }
 
     async function handleQuizEndMissions(playScore) {
@@ -559,6 +600,10 @@
     }
 
     function startNewGame() {
+        if (!allQuizData || allQuizData.length === 0) {
+            document.getElementById('question').textContent = "クイズデータの読み込みに失敗しています。";
+            return;
+        }
         currentPlayQuizData = [...allQuizData].sort(() => 0.5 - Math.random()).slice(0, 7);
         currentQuestionIndex = 0;
         score = 0;
